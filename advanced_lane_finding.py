@@ -1,18 +1,20 @@
+"""
+This module provides helper functions for the advanced-lane-finding.ipynb
+"""
 import numpy as np
 import math
 import cv2
 import glob
 import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
 from matplotlib.patches import Polygon
 
 
 def image_size(image_name=None, image=None):
     """
-
-    :param image_name:
-    :param image:
-    :return:
+    return the size of an image
+    :param image_name: if provided load the image and then return the size
+    :param image:if provided return the shape
+    :return: return the shape in the form of width, height
     """
     if image_name:
         image = cv2.imread(image_name)
@@ -20,12 +22,14 @@ def image_size(image_name=None, image=None):
 
 
 class ImagePointsNotFoundException(Exception):
-    pass
+    """
+    Used when image points have not been identified
+    """
 
 
 def plot_images(*args, cmap='gray', fig_size=(20, 10), num_cols=2, font_size=16, line_color='red'):
     """
-
+    helper function used to plot images and functions
     :param args:
     :param cmap:
     :param fig_size:
@@ -58,12 +62,25 @@ def plot_images(*args, cmap='gray', fig_size=(20, 10), num_cols=2, font_size=16,
 
 
 def calculate_object_points(chessboard_nx, chessboard_ny):
+    """
+    calculate the object points provided the number of chessboard points in the x and y direction
+    :param chessboard_nx:
+    :param chessboard_ny:
+    :return:
+    """
     obj_points = np.zeros((chessboard_nx * chessboard_ny, 3), np.float32)
     obj_points[:, :2] = np.mgrid[0:chessboard_ny, 0:chessboard_nx].T.reshape(-1, 2)
     return obj_points
 
 
 def calculate_image_points(gray_chessboard_img, chessboard_nx, chessboard_ny):
+    """
+    locate the corners of a chessboard on an image
+    :param gray_chessboard_img:
+    :param chessboard_nx:
+    :param chessboard_ny:
+    :return:
+    """
     found, img_points = cv2.findChessboardCorners(gray_chessboard_img, (chessboard_ny, chessboard_nx), None)
 
     if not found:
@@ -73,11 +90,17 @@ def calculate_image_points(gray_chessboard_img, chessboard_nx, chessboard_ny):
 
 
 def compute_distortion(calibration_images, chessboard_nx, chessboard_ny):
+    """
+    provided a list of image, and number of corners in the x and y direction compute the distortion coefficients
+    :param calibration_images:
+    :param chessboard_nx:
+    :param chessboard_ny:
+    :return:
+    """
     object_points_list = []
     image_points_list = []
 
     for calibration_image in calibration_images:
-        # print(f'Calculating distortion with image {calibration_image:30}', end='')
         image = cv2.imread(calibration_image)
 
         gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -101,7 +124,7 @@ def compute_distortion(calibration_images, chessboard_nx, chessboard_ny):
 
 def sobel_thresh(img, sobel_kernel, thresh_min, thresh_max, orient='x'):
     """
-
+    Calculate the sobel gradient and only keep pixels within a given threshold
     :param img:
     :param sobel_kernel:
     :param thresh_min:
@@ -129,7 +152,7 @@ def sobel_thresh(img, sobel_kernel, thresh_min, thresh_max, orient='x'):
 
 def magnitude_threshold(img, sobel_kernel, thresh_min, thresh_max):
     """
-
+    compute the magnitude of each pixel in an image and only keep those that fall within the threshold
     :param img:
     :param sobel_kernel:
     :param thresh_min:
@@ -153,8 +176,15 @@ def magnitude_threshold(img, sobel_kernel, thresh_min, thresh_max):
     return binary_output
 
 
-# Define a function to threshold an image for a given range and Sobel kernel
 def directional_threshold(img, sobel_kernel, thresh_min, thresh_max):
+    """
+    compute the directional threshold of each pixel and only keep those that fall within a range
+    :param img:
+    :param sobel_kernel:
+    :param thresh_min:
+    :param thresh_max:
+    :return:
+    """
     # Grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     # Calculate the x and y gradients
@@ -173,7 +203,7 @@ def directional_threshold(img, sobel_kernel, thresh_min, thresh_max):
 
 def hls_threshold(img, thresh_min, thresh_max):
     """
-
+    tranform the image to the hls color space and only keep the pixels that fall within the threshold
     :param img:
     :param thresh_min:
     :param thresh_max:
@@ -193,6 +223,20 @@ def hls_threshold(img, thresh_min, thresh_max):
 def threshold_binary(img, sobel_kernel=15, sobel_thresh_min=20, sobel_thresh_max=200, mag_thresh_min=50,
                      mag_thresh_max=150, dir_thresh_min=0.7, dir_thresh_max=1.2, hls_min_thresh=160,
                      hls_max_thresh=255):
+    """
+    Calculate all the thresholds provided by this module and combine them into one binary image
+    :param img:
+    :param sobel_kernel:
+    :param sobel_thresh_min:
+    :param sobel_thresh_max:
+    :param mag_thresh_min:
+    :param mag_thresh_max:
+    :param dir_thresh_min:
+    :param dir_thresh_max:
+    :param hls_min_thresh:
+    :param hls_max_thresh:
+    :return:
+    """
     grad_x_binary = sobel_thresh(img, sobel_kernel, sobel_thresh_min, sobel_thresh_max, orient='x')
     grad_y_binary = sobel_thresh(img, sobel_kernel, sobel_thresh_min, sobel_thresh_max, orient='y')
     mag_binary = magnitude_threshold(img, sobel_kernel, mag_thresh_min, mag_thresh_max)
@@ -207,6 +251,12 @@ def threshold_binary(img, sobel_kernel=15, sobel_thresh_min=20, sobel_thresh_max
 
 
 def birds_eye_transform_points(w, h):
+    """
+    Calculate birds eye transform points, proportional to the image size
+    :param w:
+    :param h:
+    :return:
+    """
     src = np.float32(
         [
             [w * .22, h * .97],
@@ -228,6 +278,12 @@ def birds_eye_transform_points(w, h):
 
 
 def birds_eye_transform_matrix(w, h):
+    """
+    Create the birds eye transform matrix
+    :param w:
+    :param h:
+    :return:
+    """
     src, dst = birds_eye_transform_points(w, h)
 
     transform_matrix = cv2.getPerspectiveTransform(src, dst)
@@ -237,6 +293,13 @@ def birds_eye_transform_matrix(w, h):
 
 
 def matrix_to_polygon(src=None, dst=None, img=None):
+    """
+    Generate the x and y coordinates given a set of points or image
+    :param src:
+    :param dst:
+    :param img:
+    :return:
+    """
     if img is not None:
         i_size = image_size(image=img)
         src, dst = birds_eye_transform_points(i_size[0], i_size[1])
@@ -251,6 +314,12 @@ def matrix_to_polygon(src=None, dst=None, img=None):
 
 
 def birds_eye_transform(image, matrix=None):
+    """
+    Compute a birds eye transform on an image
+    :param image:
+    :param matrix:
+    :return:
+    """
     size = image_size(image=image)
 
     if matrix is None:
@@ -260,6 +329,11 @@ def birds_eye_transform(image, matrix=None):
 
 
 def calculate_hist(img):
+    """
+
+    :param img:
+    :return:
+    """
     # Only use the bottom half because those are most likely to be vertical
     bottom_half = img[img.shape[0] // 2:, :]
 
@@ -270,10 +344,22 @@ def calculate_hist(img):
 
 
 def find_lane_pixels(binary_warped, nwindows=9, margin=100, minpix=50, draw_windows=False):
+    """
+
+    :param binary_warped:
+    :param nwindows:
+    :param margin:
+    :param minpix:
+    :param draw_windows:
+    :return:
+    """
+    out_img = None
+    if draw_windows:
+        # Create an output image to draw on and visualize the result
+        out_img = np.dstack((binary_warped, binary_warped, binary_warped))
+
     # Take a histogram of the bottom half of the image
     histogram = np.sum(binary_warped[binary_warped.shape[0] // 2:, :], axis=0)
-    # Create an output image to draw on and visualize the result
-    out_img = np.dstack((binary_warped, binary_warped, binary_warped))
     # Find the peak of the left and right halves of the histogram
     # These will be the starting point for the left and right lines
     midpoint = np.int(histogram.shape[0] // 2)
@@ -344,22 +430,46 @@ def find_lane_pixels(binary_warped, nwindows=9, margin=100, minpix=50, draw_wind
     return leftx, lefty, rightx, righty, out_img
 
 
-def fit_polynomial(binary_warped, color_lanes=False, draw_windows=False):
+def fit_polynomial(binary_warped, output_debug=False):
+    """
+
+    :param binary_warped:
+    :param output_debug:
+    :return:
+    """
     # Find our lane pixels first
-    left_x, left_y, right_x, right_y, out_img = find_lane_pixels(binary_warped, draw_windows=draw_windows)
+    left_x, left_y, right_x, right_y, out_img = find_lane_pixels(binary_warped, draw_windows=output_debug)
 
     # Fit a second order polynomial to each using `np.polyfit`
     left_fit = np.polyfit(left_y, left_x, 2)
     right_fit = np.polyfit(right_y, right_x, 2)
 
-    if color_lanes:
+    if output_debug:
         out_img[left_y, left_x] = [255, 0, 0]
         out_img[right_y, right_x] = [0, 0, 255]
 
     return left_fit, right_fit, out_img
 
 
+def binary_to_img(binary):
+    """
+
+    :param binary:
+    :return:
+    """
+    out_img = np.dstack((binary, binary, binary))
+    out_img = out_img * 255
+    return out_img
+
+
 def show_polynomial(img, left_fit, right_fit):
+    """
+
+    :param img:
+    :param left_fit:
+    :param right_fit:
+    :return:
+    """
     # Generate x and y values for plotting
     ploty = np.linspace(0, img.shape[0] - 1, img.shape[0])
     try:
@@ -378,6 +488,14 @@ def show_polynomial(img, left_fit, right_fit):
 
 
 def add_lines(img, fit, color_bgr=(0, 255, 0), thickness=9):
+    """
+
+    :param img:
+    :param fit:
+    :param color_bgr:
+    :param thickness:
+    :return:
+    """
     # Generate x and y values for plotting
     y = np.linspace(0, img.shape[0] - 1, img.shape[0])
     try:
@@ -394,6 +512,15 @@ def add_lines(img, fit, color_bgr=(0, 255, 0), thickness=9):
 
 
 def overlay_search_area(left_fit, right_fit, margin=100, img=None, binary_img=None):
+    """
+
+    :param left_fit:
+    :param right_fit:
+    :param margin:
+    :param img:
+    :param binary_img:
+    :return:
+    """
     # create the output image and window image used to overlay
     if binary_img is not None:
         out_img = np.dstack((img, img, img)) * 255
@@ -431,10 +558,15 @@ def overlay_search_area(left_fit, right_fit, margin=100, img=None, binary_img=No
     return cv2.addWeighted(out_img, 1, window_img, .25, 0)
 
 
-def search_around_poly(binary_warped, left_fit, right_fit, margin=100, color_lanes=False):
-    # Create an output image to draw on and visualize the result
-    out_img = np.dstack((binary_warped, binary_warped, binary_warped))
+def search_around_poly(binary_warped, left_fit, right_fit, margin=100):
+    """
 
+    :param binary_warped:
+    :param left_fit:
+    :param right_fit:
+    :param margin:
+    :return:
+    """
     # Grab only the activated pixels in the new image
     nonzero = binary_warped.nonzero()
     nonzeroy = np.array(nonzero[0])
@@ -457,18 +589,26 @@ def search_around_poly(binary_warped, left_fit, right_fit, margin=100, color_lan
     right_x = nonzerox[right_lane_indices]
     right_y = nonzeroy[right_lane_indices]
 
-    if color_lanes:
-        out_img[left_y, left_x] = [255, 0, 0]
-        out_img[right_y, right_x] = [0, 0, 255]
+    if left_x.size == 0 or right_x.size == 0:
+        return None, None
 
     # With the new images nonzero pixels, generate a new fit
     new_left_fit = np.polyfit(left_y, left_x, 2)
     new_right_fit = np.polyfit(right_y, right_x, 2)
 
-    return new_left_fit, new_right_fit, out_img
+    return new_left_fit, new_right_fit
 
 
 def calculate_curvature(left_fit, right_fit, img_shape, ym_per_pix=30/720, xm_per_pix=3.7/700):
+    """
+
+    :param left_fit:
+    :param right_fit:
+    :param img_shape:
+    :param ym_per_pix:
+    :param xm_per_pix:
+    :return:
+    """
     plot_y = np.linspace(0, img_shape[0] - 1, num=img_shape[0])  # to cover same y-range as image
     left_x = left_fit[0] * plot_y ** 2 + left_fit[1] * plot_y + left_fit[2]
     right_x = right_fit[0] * plot_y ** 2 + right_fit[1] * plot_y + right_fit[2]
@@ -495,6 +635,14 @@ def calculate_curvature(left_fit, right_fit, img_shape, ym_per_pix=30/720, xm_pe
 
 
 def car_offset(left_fit, right_fit, img_shape, xm_per_pix=3.7/700):
+    """
+
+    :param left_fit:
+    :param right_fit:
+    :param img_shape:
+    :param xm_per_pix:
+    :return:
+    """
     mid_img_x = img_shape[1] // 2
 
     plot_y = np.linspace(0, img_shape[0] - 1, num=img_shape[0])  # to cover same y-range as image
@@ -504,3 +652,102 @@ def car_offset(left_fit, right_fit, img_shape, xm_per_pix=3.7/700):
     car_pos = (left_x[-1] + right_x[-1]) / 2
 
     return (mid_img_x - car_pos) * xm_per_pix
+
+
+def draw_lane(img, left_fit, right_fit, m_inv):
+    """
+
+    :param img:
+    :param left_fit:
+    :param right_fit:
+    :param m_inv:
+    :return:
+    """
+    # Create an image to draw the lines on
+    warp_zero = np.zeros_like(img)
+
+    plot_y = np.linspace(0, img.shape[0] - 1, img.shape[0])
+    try:
+        left_fit_x = left_fit[0] * plot_y ** 2 + left_fit[1] * plot_y + left_fit[2]
+        right_fit_x = right_fit[0] * plot_y ** 2 + right_fit[1] * plot_y + right_fit[2]
+    except TypeError:
+        # Avoids an error if `left` and `right_fit` are still none or incorrect
+        print('The function failed to fit a line!')
+        left_fit_x = 1 * plot_y ** 2 + 1 * plot_y
+        right_fit_x = 1 * plot_y ** 2 + 1 * plot_y
+
+    # Generate a polygon to illustrate the search window area
+    # And recast the x and y points into usable format for cv2.fillPoly()
+    left_line_window1 = np.array([np.transpose(np.vstack([left_fit_x, plot_y]))])
+    left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([right_fit_x, plot_y])))])
+    left_line_pts = np.hstack((left_line_window1, left_line_window2))
+
+    # Draw the lane onto the warped blank image
+    cv2.fillPoly(warp_zero, np.int_(left_line_pts), (0, 255, 0))
+
+    # Warp the blank back to original image space using inverse perspective matrix (Minv)
+    new_warp = cv2.warpPerspective(warp_zero, m_inv, (img.shape[1], img.shape[0]))
+
+    # Combine the result with the original image
+    return cv2.addWeighted(img, 1, new_warp, 0.3, 0)
+
+
+def add_metrics(img, left_lane_curvature, right_lane_curvature, horizontal_offset):
+    """
+
+    :param img:
+    :param left_lane_curvature:
+    :param right_lane_curvature:
+    :param horizontal_offset:
+    :return:
+    """
+    # Display lane curvature
+    out_img = img.copy()
+    cv2.putText(out_img, f'Left lane line curvature: {left_lane_curvature:.2f} m',
+                (60, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 5)
+    cv2.putText(out_img, f'Right lane line curvature: {right_lane_curvature:.2f} m',
+                (60, 110), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 5)
+    cv2.putText(out_img, f'Horizontal car offset: {horizontal_offset:.2f} m',
+                (60, 160), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 5)
+    return out_img
+
+
+class ProcessImage:
+    def __init__(self, images, chessboard_nx=9, chessboard_ny=6):
+        # Make a list of calibration images
+        images = glob.glob(images)
+
+        # Calibrate camera
+        self.mtx, self.dist = compute_distortion(images, chessboard_nx, chessboard_ny)
+        self.left_fit = None
+        self.right_fit = None
+
+    def __call__(self, img):
+        # Undistort image
+        undistorted_img = cv2.undistort(img, self.mtx, self.dist, None, self.mtx)
+
+        # get the transform matrix
+        matrix, inv_matrix = birds_eye_transform_matrix(img.shape[1], img.shape[0])
+
+        # get the binary image with the default thresholds
+        source_threshold_binary = threshold_binary(undistorted_img)
+
+        # transform to get the birds eye view
+        birds_eye = birds_eye_transform(source_threshold_binary)
+
+        # if left and right fits are calculated then use them to search
+        if self.left_fit is None:
+            self.left_fit, self.right_fit, _ = fit_polynomial(birds_eye)
+        else:
+            self.left_fit, self.right_fit = search_around_poly(source_threshold_binary, self.left_fit,
+                                                               self.right_fit)
+            if self.left_fit is None:
+                self.left_fit, self.right_fit, _ = fit_polynomial(source_threshold_binary)
+
+        left_curvature, right_curvature = calculate_curvature(self.left_fit, self.right_fit, img.shape)
+        offset = car_offset(self.left_fit, self.right_fit, img.shape)
+
+        undistorted_img = add_metrics(undistorted_img, left_curvature, right_curvature, offset)
+        undistorted_img = draw_lane(undistorted_img, self.left_fit, self.right_fit, inv_matrix)
+
+        return undistorted_img
