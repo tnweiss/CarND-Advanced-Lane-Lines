@@ -122,11 +122,10 @@ def compute_distortion(calibration_images, chessboard_nx, chessboard_ny):
     return mtx, dist
 
 
-def sobel_thresh(img, sobel_kernel, thresh_min, thresh_max, orient='x'):
+def sobel_thresh(img, thresh_min, thresh_max, orient='x'):
     """
     Calculate the sobel gradient and only keep pixels within a given threshold
     :param img:
-    :param sobel_kernel:
     :param thresh_min:
     :param thresh_max:
     :param orient:
@@ -137,9 +136,9 @@ def sobel_thresh(img, sobel_kernel, thresh_min, thresh_max, orient='x'):
     # based on orientation, provide params to calculate sobel accordingly
     abs_sobel = None
     if orient == 'x':
-        abs_sobel = np.absolute(cv2.Sobel(gray, cv2.CV_64F, 1, 0, sobel_kernel))
+        abs_sobel = np.absolute(cv2.Sobel(gray, cv2.CV_64F, 1, 0))
     if orient == 'y':
-        abs_sobel = np.absolute(cv2.Sobel(gray, cv2.CV_64F, 0, 1,  sobel_kernel))
+        abs_sobel = np.absolute(cv2.Sobel(gray, cv2.CV_64F, 0, 1))
     # Rescale back to 8 bit integer
     scaled_sobel = np.uint8(255 * abs_sobel / np.max(abs_sobel))
     # Create a copy and apply the threshold
@@ -220,8 +219,8 @@ def hls_threshold(img, thresh_min, thresh_max):
     return binary_output
 
 
-def threshold_binary(img, sobel_kernel=15, sobel_thresh_min=20, sobel_thresh_max=200, mag_thresh_min=50,
-                     mag_thresh_max=150, dir_thresh_min=0.7, dir_thresh_max=1.2, hls_min_thresh=160,
+def threshold_binary(img, sobel_kernel=15, sobel_thresh_min=30, sobel_thresh_max=100, mag_thresh_min=30,
+                     mag_thresh_max=100, dir_thresh_min=0.8, dir_thresh_max=1, hls_min_thresh=160,
                      hls_max_thresh=255):
     """
     Calculate all the thresholds provided by this module and combine them into one binary image
@@ -237,8 +236,8 @@ def threshold_binary(img, sobel_kernel=15, sobel_thresh_min=20, sobel_thresh_max
     :param hls_max_thresh:
     :return:
     """
-    grad_x_binary = sobel_thresh(img, sobel_kernel, sobel_thresh_min, sobel_thresh_max, orient='x')
-    grad_y_binary = sobel_thresh(img, sobel_kernel, sobel_thresh_min, sobel_thresh_max, orient='y')
+    grad_x_binary = sobel_thresh(img, sobel_thresh_min, sobel_thresh_max, orient='x')
+    grad_y_binary = sobel_thresh(img, sobel_thresh_min, sobel_thresh_max, orient='y')
     mag_binary = magnitude_threshold(img, sobel_kernel, mag_thresh_min, mag_thresh_max)
     dir_binary = directional_threshold(img, sobel_kernel, dir_thresh_min, dir_thresh_max)
     hls_binary = hls_threshold(img, hls_min_thresh, hls_max_thresh)
@@ -457,8 +456,7 @@ def binary_to_img(binary):
     :param binary:
     :return:
     """
-    out_img = np.dstack((binary, binary, binary))
-    out_img = out_img * 255
+    out_img = np.dstack((binary * 255, binary * 255, binary * 255))
     return out_img
 
 
@@ -552,10 +550,10 @@ def overlay_search_area(left_fit, right_fit, margin=100, img=None, binary_img=No
     right_line_pts = np.hstack((right_line_window1, right_line_window2))
 
     # Draw the lane onto the warped blank image
-    cv2.fillPoly(window_img, np.int_([left_line_pts]), (0, 1, 0))
-    cv2.fillPoly(window_img, np.int_([right_line_pts]), (0, 1, 0))
+    cv2.fillPoly(window_img, np.int_([left_line_pts]), (0, 255, 0))
+    cv2.fillPoly(window_img, np.int_([right_line_pts]), (0, 255, 0))
 
-    return cv2.addWeighted(out_img, 1, window_img, .25, 0)
+    return (out_img * .9) + (window_img * .1)
 
 
 def search_around_poly(binary_warped, left_fit, right_fit, margin=100):
@@ -713,7 +711,7 @@ def add_metrics(img, left_lane_curvature, right_lane_curvature, horizontal_offse
 
 
 class ProcessImage:
-    def __init__(self, images, chessboard_nx=9, chessboard_ny=6):
+    def __init__(self, images, chessboard_nx=9, chessboard_ny=6, width=1280, height=720):
         # Make a list of calibration images
         images = glob.glob(images)
 
@@ -722,32 +720,30 @@ class ProcessImage:
         self.left_fit = None
         self.right_fit = None
 
+        # get the transform matrix
+        self.xform_matrix, self.inv_xform_matrix = birds_eye_transform_matrix(width, height)
+
     def __call__(self, img):
         # Undistort image
         undistorted_img = cv2.undistort(img, self.mtx, self.dist, None, self.mtx)
-
-        # get the transform matrix
-        matrix, inv_matrix = birds_eye_transform_matrix(img.shape[1], img.shape[0])
 
         # get the binary image with the default thresholds
         source_threshold_binary = threshold_binary(undistorted_img)
 
         # transform to get the birds eye view
-        birds_eye = birds_eye_transform(source_threshold_binary)
+        birds_eye = birds_eye_transform(source_threshold_binary, matrix=self.xform_matrix)
 
         # if left and right fits are calculated then use them to search
         if self.left_fit is None:
             self.left_fit, self.right_fit, _ = fit_polynomial(birds_eye)
         else:
-            self.left_fit, self.right_fit = search_around_poly(source_threshold_binary, self.left_fit,
+            self.left_fit, self.right_fit = search_around_poly(birds_eye, self.left_fit,
                                                                self.right_fit)
-            if self.left_fit is None:
-                self.left_fit, self.right_fit, _ = fit_polynomial(source_threshold_binary)
 
         left_curvature, right_curvature = calculate_curvature(self.left_fit, self.right_fit, img.shape)
         offset = car_offset(self.left_fit, self.right_fit, img.shape)
 
         undistorted_img = add_metrics(undistorted_img, left_curvature, right_curvature, offset)
-        undistorted_img = draw_lane(undistorted_img, self.left_fit, self.right_fit, inv_matrix)
+        undistorted_img = draw_lane(undistorted_img, self.left_fit, self.right_fit, self.inv_xform_matrix)
 
         return undistorted_img
